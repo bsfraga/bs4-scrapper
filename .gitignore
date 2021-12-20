@@ -1,0 +1,5 @@
+#python env files
+venv/*
+
+#workspace config files
+.vscode/*
