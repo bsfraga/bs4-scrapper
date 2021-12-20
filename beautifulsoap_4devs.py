@@ -1,3 +1,4 @@
+#   ./venv/bin/python3
 
 import requests
 import sys
@@ -54,15 +55,28 @@ def main():
 
     genereated = []
     results = []
-    with ThreadPoolExecutor() as executor:
-        for i in range(30):
-            genereated.append(executor.submit(companyGenerator, state, mask, age))
-        for item in as_completed(genereated):
-            results.append(executor.submit(parseHtml, item.result()))
 
+    if 'empresa' in table:
+        with ThreadPoolExecutor() as executor:
+            for i in range(30):
+                genereated.append(executor.submit(companyGenerator, state, mask, age))
+            for item in as_completed(genereated):
+                results.append(executor.submit(parseHtml, item.result()))
 
+    if 'pessoa' in table:
+        with ThreadPoolExecutor() as executor:
+            for i in range(30):
+                results.append(executor.submit(personGenerator, mask, age))
+
+    conn = connectDB(host, database, user, password)
     for item in as_completed(results):
-        insertDB(connectDB(host, database, user, password), table, item.result())
+        insertDB(conn, table, item.result())
+
+    closeDBConn(conn)
+
+def closeDBConn(conn):
+    if conn:
+        conn.close()
 
 
 def connectDB(host, database, user, password):
@@ -89,7 +103,6 @@ def insertDB(conn, table, dict_input):
         cur.execute(query)
         conn.commit()
         cur.close()
-        conn.close()
     except Error as e:
         print(columns)
         print("\n")
@@ -113,6 +126,17 @@ def companyGenerator(state, mask, age):
 
     return response.text
 
+def personGenerator(mask, age):
+    url = "https://www.4devs.com.br/ferramentas_online.php"
+
+    payload=f'acao=gerar_pessoa&sexo=I&pontuacao={mask}&idade={age}&cep_estado=&txt_qtde=1&cep_cidade='
+    headers = {
+    'Content-Type': 'application/x-www-form-urlencoded'
+    }
+
+    response = requests.request("POST", url, headers=headers, data=payload)
+
+    return response.json()
 
 def parseHtml(html):
     soup = BeautifulSoup(html, 'html.parser')
