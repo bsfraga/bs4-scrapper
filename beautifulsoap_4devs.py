@@ -89,7 +89,6 @@ def connectDB(host, database, user, password):
         return conn
     except Error as e:
         print(e)
-        sys.exit(1)
 
 
 def insertDB(conn, table, dict_input):
