@@ -59,7 +59,8 @@ def main():
     if 'empresa' in table:
         with ThreadPoolExecutor() as executor:
             for i in range(30):
-                genereated.append(executor.submit(companyGenerator, state, mask, age))
+                genereated.append(executor.submit(
+                    companyGenerator, state, mask, age))
             for item in as_completed(genereated):
                 results.append(executor.submit(parseHtml, item.result()))
 
@@ -73,6 +74,7 @@ def main():
         insertDB(conn, table, item.result())
 
     closeDBConn(conn)
+
 
 def closeDBConn(conn):
     if conn:
@@ -125,17 +127,19 @@ def companyGenerator(state, mask, age):
 
     return response.text
 
+
 def personGenerator(mask, age):
     url = "https://www.4devs.com.br/ferramentas_online.php"
 
-    payload=f'acao=gerar_pessoa&sexo=I&pontuacao={mask}&idade={age}&cep_estado=&txt_qtde=1&cep_cidade='
+    payload = f'acao=gerar_pessoa&sexo=I&pontuacao={mask}&idade={age}&cep_estado=&txt_qtde=1&cep_cidade='
     headers = {
-    'Content-Type': 'application/x-www-form-urlencoded'
+        'Content-Type': 'application/x-www-form-urlencoded'
     }
 
     response = requests.request("POST", url, headers=headers, data=payload)
 
     return response.json()
+
 
 def parseHtml(html):
     soup = BeautifulSoup(html, 'html.parser')
