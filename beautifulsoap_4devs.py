@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import random
+import pymongo
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,14 +16,15 @@ from psycopg2 import connect
 def main():
     parser = argparse.ArgumentParser(
         description='This script will generate a company and insert it into a database.')
-    parser.add_argument('-host', '--h', dest='host',
-                        help='Database hostname', required=False)
+    parser.add_argument('-host', '--h', dest='host', required=False, help='Database hostname. If needed add port number after colon. Ex: localhost:5432')
     parser.add_argument('-database', '--d', dest='database',
                         help='Database name', required=False)
     parser.add_argument('-user', '--u', dest='user',
                         help='Database user', required=False)
     parser.add_argument('-password', '--p', dest='password',
                         help='Database password', required=False)
+    parser.add_argument('-collection', '--c', dest='collection',
+                        required=False, help='Database collection')
     parser.add_argument(
         '-table', '--t', dest='table', help='Database table name', required=False)
     parser.add_argument(
@@ -55,6 +57,7 @@ def main():
     user = args.user
     password = args.password
     table = args.table
+    collection = args.collection
     state = args.state
     age = args.age
     mask = args.mask
@@ -75,27 +78,54 @@ def main():
         logging.error("Exiting application.")
         sys.exit(1)
     else:
-        genereated = []
+        if not collection:
+            results = []
+            if 'empresa' in table:
+                results = companyTask(state, mask, age)
+
+            if 'pessoa' in table:
+                results = personTask(mask, age)
+
+            conn = connectDB(host, database, user, password)
+            for item in as_completed(results):
+                insertDB(conn, table, item.result())
+
+            closeDBConn(conn)
+
+    if collection and not table:
         results = []
+        if 'empresa' in collection:
+            results = companyTask(state, mask, age)
 
-        if 'empresa' in table:
-            with ThreadPoolExecutor() as executor:
-                for _ in range(30):
-                    genereated.append(executor.submit(
-                        companyGenerator, state, mask, age))
-                for item in as_completed(genereated):
-                    results.append(executor.submit(parseHtml, item.result()))
+        if 'pessoa' in collection:
+            results = personTask(mask, age)
 
-        if 'pessoa' in table:
-            with ThreadPoolExecutor() as executor:
-                for i in range(30):
-                    results.append(executor.submit(personGenerator, mask, age))
+        mongo_client = connectMongo(host, database, user, password)
 
-        conn = connectDB(host, database, user, password)
         for item in as_completed(results):
-            insertDB(conn, table, item.result())
+            insertDocument(mongo_client, collection, item.result())
 
-        closeDBConn(conn)
+        mongo_client.close()
+
+
+def personTask(mask, age):
+    results = []
+    with ThreadPoolExecutor() as executor:
+        for _ in range(30):
+            results.append(executor.submit(personGenerator, mask, age))
+    return results
+
+
+def companyTask(state, mask, age):
+    generated = []
+    results = []
+    with ThreadPoolExecutor() as executor:
+        for _ in range(30):
+            generated.append(executor.submit(
+                companyGenerator, state, mask, age))
+        for item in as_completed(generated):
+            results.append(executor.submit(parseHtml, item.result()))
+    return results
 
 
 def saveIntoFile(data, outputDir):
@@ -137,6 +167,30 @@ def connectDB(host, database, user, password):
         logging.warning(
             "Error connecting to database. Exiting application.\n Check log for more details.")
         sys.exit(1)
+
+
+def connectMongo(host, username, password, database):
+    try:
+        client = pymongo.MongoClient(
+            f"mongodb+srv://{username}:{password}@{host}/{database}?retryWrites=true&w=majority")
+        logging.info(f"Connected to MongoDB at {host}")
+        return client
+    except Exception:
+        logging.error(f"Error connecting to MongoDB")
+        logging.error(f"{traceback.format_exc()}")
+        logging.warning(
+            "Error connecting to MongoDB. Exiting application.\n Check log for more details.")
+        sys.exit(1)
+
+
+def insertDocument(mongo_client, collection, data):
+    try:
+        mongo_client[collection].insert_one(data)
+    except Exception:
+        logging.error(f"Error inserting document into MongoDB")
+        logging.error(f"{traceback.format_exc()}")
+        logging.warning(
+            "Error inserting document into MongoDB. Exiting application.\n Check log for more details.")
 
 
 def insertDB(conn, table, dict_input):
