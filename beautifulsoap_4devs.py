@@ -1,6 +1,7 @@
 #   ./venv/bin/python3
 import argparse
 import logging
+import os
 import random
 import sys
 import traceback
@@ -8,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
-from psycopg2 import Error, connect
+from psycopg2 import connect
 
 
 def main():
@@ -62,12 +63,14 @@ def main():
     logging.info(f"Starting application with parameters: {args}")
 
     if outputDir and outputDir.split('.')[-1] not in ['csv', 'json']:
-        logging.error(f"{outputDir} is not a valid output file. Only .csv and .json are supported.")
+        logging.error(
+            f"{outputDir} is not a valid output file. Only .csv and .json are supported.")
         print(parser.print_help())
         sys.exit(1)
 
     if not host or not database or not user or not password or not table:
-        logging.error("To perform database persistence all database information required must be specified.")
+        logging.error(
+            "To perform database persistence all database information required must be specified.")
         parser.print_help()
         logging.error("Exiting application.")
         sys.exit(1)
@@ -156,6 +159,7 @@ def insertDB(conn, table, dict_input):
         logging.warning(f"{traceback.format_exc()}")
         logging.info(query)
 
+
 def companyGenerator(state, mask, age):
     url = "https://www.4devs.com.br/ferramentas_online.php"
 
@@ -202,7 +206,8 @@ def parseHtml(html):
 
 
 if __name__ == '__main__':
+
     logging.basicConfig(level=logging.INFO,
-                        filename='beautifulsoap_4devs.log', encoding='utf-8',
+                        filename=f'{os.path.dirname(__file__)}/beautifulsoap_4devs.log', encoding='utf-8',
                         datefmt="%m/%d/%Y %I:%M:%S %p", format='%(asctime)s %(message)s')
     main()
