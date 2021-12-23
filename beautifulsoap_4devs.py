@@ -1,47 +1,52 @@
 #   ./venv/bin/python3
+import argparse
+import logging
+import random
+import sys
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-import sys
-import random
-import argparse
-import traceback
 from bs4 import BeautifulSoup
-from pprint import pprint
-from psycopg2 import connect, Error
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from psycopg2 import Error, connect
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='This script will generate a company and insert it into a database.')
     parser.add_argument('-host', '--h', dest='host',
-                        help='Database hostname', required=True)
+                        help='Database hostname', required=False)
     parser.add_argument('-database', '--d', dest='database',
-                        help='Database name', required=True)
+                        help='Database name', required=False)
     parser.add_argument('-user', '--u', dest='user',
-                        help='Database user', required=True)
+                        help='Database user', required=False)
     parser.add_argument('-password', '--p', dest='password',
-                        help='Database password', required=True)
+                        help='Database password', required=False)
     parser.add_argument(
-        '-table', '--t', dest='table', help='Database table name', required=True)
+        '-table', '--t', dest='table', help='Database table name', required=False)
     parser.add_argument(
         '-state', '--s', dest='state', help='State of the company, default is a random value between all brazilian states abreviations', required=False,)
     parser.add_argument(
-        '-age', '--a', dest='age', help='Age of the company, default is a random between 0 and 100', required=False, )
+        '-age', '--a', dest='age', help='Age of the company, default is a random between 0 and 50', required=False, )
     parser.add_argument(
-        '-mask', '--m', dest='mask', help='Data mask. Default value "S"', required=False)
+        '-mask', '--m', dest='mask', help='Data mask. Default value "S"', required=False, choices=['S', 'N'])
+    parser.add_argument('-outputDir', '--o', dest='outputDir',
+                        help='Specifies where to store the output. Only .csv and .json are supported.', required=False)
     args = parser.parse_args()
 
     if 'state' not in args or not args.state:
+        logging.info("No state specified. Using random value")
         states = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
                   'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
                   'SP', 'SE', 'TO']
         args.state = states[random.randint(0, len(states) - 1)]
 
     if 'age' not in args or not args.age:
+        logging.info("No age specified. Using random value")
         args.age = random.randint(1, 50)
 
     if 'mask' not in args or not args.mask:
+        logging.info("No mask specified. Using default value")
         args.mask = 'S'
 
     host = args.host
@@ -52,28 +57,61 @@ def main():
     state = args.state
     age = args.age
     mask = args.mask
+    outputDir = args.outputDir
 
-    genereated = []
-    results = []
+    logging.info(f"Starting application with parameters: {args}")
 
-    if 'empresa' in table:
-        with ThreadPoolExecutor() as executor:
-            for i in range(30):
-                genereated.append(executor.submit(
-                    companyGenerator, state, mask, age))
-            for item in as_completed(genereated):
-                results.append(executor.submit(parseHtml, item.result()))
+    if outputDir and outputDir.split('.')[-1] not in ['csv', 'json']:
+        logging.error(f"{outputDir} is not a valid output file. Only .csv and .json are supported.")
+        print(parser.print_help())
+        sys.exit(1)
 
-    if 'pessoa' in table:
-        with ThreadPoolExecutor() as executor:
-            for i in range(30):
-                results.append(executor.submit(personGenerator, mask, age))
+    if not host or not database or not user or not password or not table:
+        logging.error("To perform database persistence all database information required must be specified.")
+        parser.print_help()
+        logging.error("Exiting application.")
+        sys.exit(1)
+    else:
+        genereated = []
+        results = []
 
-    conn = connectDB(host, database, user, password)
-    for item in as_completed(results):
-        insertDB(conn, table, item.result())
+        if 'empresa' in table:
+            with ThreadPoolExecutor() as executor:
+                for _ in range(30):
+                    genereated.append(executor.submit(
+                        companyGenerator, state, mask, age))
+                for item in as_completed(genereated):
+                    results.append(executor.submit(parseHtml, item.result()))
 
-    closeDBConn(conn)
+        if 'pessoa' in table:
+            with ThreadPoolExecutor() as executor:
+                for i in range(30):
+                    results.append(executor.submit(personGenerator, mask, age))
+
+        conn = connectDB(host, database, user, password)
+        for item in as_completed(results):
+            insertDB(conn, table, item.result())
+
+        closeDBConn(conn)
+
+
+def saveIntoFile(data, outputDir):
+    try:
+        with open(outputDir, 'w') as f:
+            if outputDir.split('.')[-1] == 'json':
+                f.write(data)
+
+            if outputDir.split('.')[-1] == 'csv':
+                f.write(','.join(data.keys()))
+                f.write('\n')
+                for line in data.values():
+                    f.write(','.join(line))
+                    f.write('\n')
+    except Exception:
+        logging.warning("Error saving into file")
+        logging.warning(f"{traceback.format_exc()}")
+        print("Exiting application.")
+        sys.exit(1)
 
 
 def closeDBConn(conn):
@@ -88,29 +126,35 @@ def connectDB(host, database, user, password):
                        user=user,
                        password=password,
                        port=5432)
+        logging.info(f"Connected to database at {host}")
         return conn
-    except Error as e:
-        print(e)
+    except Exception:
+        logging.error(f"Error connecting to database")
+        logging.error(f"{traceback.format_exc()}")
+        logging.warning(
+            "Error connecting to database. Exiting application.\n Check log for more details.")
+        sys.exit(1)
 
 
 def insertDB(conn, table, dict_input):
+    query = ''
     try:
         cur = conn.cursor()
         columns = [x.lower().replace(' ', '_') for x in dict_input.keys()]
-        values = tuple(dict_input.values())
+        values = str([f"'{x}'" for x in dict_input.values()])
+        values = values.replace('[', '').replace(']', '').replace('\"', '')
+        logging.info(f"Inserted into database table {table}")
         if len(columns) == 0 and len(values) == 0:
             return
-        query = f'INSERT INTO {table} ({", ".join(columns)}) VALUES {values}'
+        query = f'INSERT INTO {table} ({", ".join(columns)}) VALUES ({values})'
         cur.execute(query)
         conn.commit()
+        logging.info(f"Inserted {dict_input} into {table}")
         cur.close()
-    except Error as e:
-        print(columns)
-        print("\n")
-        print(values)
-        print(traceback.print_exc())
-        sys.exit(1)
-
+    except Exception:
+        logging.warning("Error inserting into database")
+        logging.warning(f"{traceback.format_exc()}")
+        logging.info(query)
 
 def companyGenerator(state, mask, age):
     url = "https://www.4devs.com.br/ferramentas_online.php"
@@ -121,8 +165,8 @@ def companyGenerator(state, mask, age):
     }
     response = requests.request("POST", url, headers=headers, data=payload)
     if response.status_code != 200:
-        print(f'Error {response.status_code}')
-        pprint(response.text)
+        logging.warning(f'Error {response.status_code} at companyGenerator')
+        logging.warning(response.text)
         sys.exit(1)
 
     return response.text
@@ -137,6 +181,10 @@ def personGenerator(mask, age):
     }
 
     response = requests.request("POST", url, headers=headers, data=payload)
+    if response.status_code != 200:
+        logging.warning(f'Error {response.status_code} at personGenerator')
+        logging.warning(response.text)
+        sys.exit(1)
 
     return response.json()
 
@@ -154,4 +202,7 @@ def parseHtml(html):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO,
+                        filename='beautifulsoap_4devs.log', encoding='utf-8',
+                        datefmt="%m/%d/%Y %I:%M:%S %p", format='%(asctime)s %(message)s')
     main()

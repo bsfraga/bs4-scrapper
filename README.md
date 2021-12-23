@@ -24,7 +24,7 @@ Activating the virtual environment:
 $ source venv/bin/activate
 ```
 - Windows
-```bash
+```cmd
 $ venv\Scripts\activate
 ```
 
@@ -39,21 +39,36 @@ $ python3 beautifulsoup_4devs.py --help
 ```
 Help Menu Output:
 ```bash
+usage: beautifulsoap_4devs.py [-h] [-host HOST] [-database DATABASE] [-user USER] [-password PASSWORD] [-table TABLE] [-state STATE] [-age AGE]
+                              [-mask {S,N}] [-outputDir OUTPUTDIR]
+
 This script will generate a company and insert it into a database.
 
 optional arguments:
-  -h, --help                        show this help message and exit
-  -host HOST, --h HOST              Database hostname
-  -database DATABASE, --d DATABASE  Database name
-  -user USER, --u USER              Database user
-  -password PASSWORD, --p PASSWORD  Database password
-  -table TABLE, --t TABLE           Database table name
-  -state STATE, --s STATE           State of the company, default is a random value between all brazilian states abreviations
-  -age AGE, --a AGE                 Age of the company, default is a random between 0 and 100
-  -mask MASK, --m MASK              Data mask. Default value "S"
+  -h, --help            show this help message and exit
+  -host HOST, --h HOST  Database hostname
+  -database DATABASE, --d DATABASE
+                        Database name
+  -user USER, --u USER  Database user
+  -password PASSWORD, --p PASSWORD
+                        Database password
+  -table TABLE, --t TABLE
+                        Database table name
+  -state STATE, --s STATE
+                        State of the company, default is a random value between all brazilian states abreviations
+  -age AGE, --a AGE     Age of the company, default is a random between 0 and 50
+  -mask {S,N}, --m {S,N}
+                        Data mask. Default value "S"
+  -outputDir OUTPUTDIR, --o OUTPUTDIR
+                        Specifies where to store the output. Only .csv and .json are supported.
 ```
 
-Example Usage:
+Example Usage using database persistance:
 ```bash
 $ python3 beautifulsoup_4devs.py -host localhost -database test -user postgres -password postgres -table companies -state SP -age 20 -mask S
+```
+
+Example usage saving output to a file:
+```bash
+$ python3 beautifulsoup_4devs.py -host localhost -database test -user postgres -password postgres -table companies -state SP -age 20 -mask S -outputDir /home/user/output.json
 ```
